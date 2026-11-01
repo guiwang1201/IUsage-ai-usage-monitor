@@ -162,7 +162,7 @@ pub fn claude_dir(home: &Path) -> PathBuf {
 }
 
 fn read_json(path: &Path) -> Result<JsonValue, FetchError> {
-    let text = std::fs::read_to_string(path).map_err(|_| FetchError::NoCredentials)?;
+    let text = json::read_small_file(path).map_err(|_| FetchError::NoCredentials)?;
     json::parse(&text).ok_or(FetchError::NoCredentials)
 }
 
@@ -428,7 +428,7 @@ pub fn refresh_claude(
     before_network: &mut dyn FnMut() -> Result<(), FetchError>,
 ) -> Result<(), FetchError> {
     let path = claude_credentials(env);
-    let read = || std::fs::read_to_string(&path).map_err(|_| FetchError::NoCredentials);
+    let read = || json::read_small_file(&path).map_err(|_| FetchError::NoCredentials);
     let file = read()?;
     let user_agent = claude_user_agent(&env.claude_code_dirs);
     let Some(plan) = plan_claude_refresh(&file, now, user_agent, &mut || can_replace(&path))? else {
@@ -901,6 +901,23 @@ mod tests {
 
     fn stored(dir: &Path) -> String {
         std::fs::read_to_string(dir.join(".credentials.json")).unwrap()
+    }
+
+    #[test]
+    fn oversized_credentials_are_rejected_before_network_or_rewrite() {
+        let dir = workdir("oversized");
+        let env = env_in(&dir);
+        // Valid JSON and credentials, but an accidentally bloated file.
+        let oversized = format!("{}{}", credentials("refresh-large", NOW - 60), " ".repeat(1024 * 1024));
+        store(&dir, &oversized);
+        assert!(matches!(build_request(Provider::Claude, &env, NOW), Err(FetchError::NoCredentials)));
+        assert!(matches!(refresh_claude(&env, NOW, fake_http, &mut || panic!("must not reach network")), Err(FetchError::NoCredentials)));
+        assert_eq!(stored(&dir), oversized);
+        let codex = dir.join(".codex");
+        std::fs::create_dir_all(&codex).unwrap();
+        std::fs::write(codex.join("auth.json"), &oversized).unwrap();
+        assert!(matches!(build_request(Provider::Codex, &env, NOW), Err(FetchError::NoCredentials)));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

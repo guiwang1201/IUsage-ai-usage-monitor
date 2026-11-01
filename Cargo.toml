@@ -1,6 +1,6 @@
 [package]
 name = "iusage"
-version = "0.1.15"
+version = "0.1.19"
 edition = "2021"
 description = "Taskbar usage meter for Claude and Codex"
 license = "MIT"

@@ -1,6 +1,7 @@
 # Build output
 /target/
 /dist/
+.DS_Store
 
 # Feasibility-phase scripts, prototype and notes. They describe one machine and one
 # account, and are kept locally only.
@@ -19,3 +20,6 @@
 /last-error.txt
 /backups/
 *.log
+
+# OneDrive sync-conflict copies, named "<file>-<user>的MacBook<...>.<ext>".
+*-*的MacBook*

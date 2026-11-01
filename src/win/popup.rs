@@ -21,10 +21,12 @@ const DETAIL_H: f32 = 16.0;
 const ROW_GAP: f32 = 10.0;
 const STATUS_GAP: f32 = 8.0;
 const STATUS_H: f32 = 16.0;
+const PACE_GAP: f32 = 14.0;
+const PACE_H: f32 = 22.0;
 const SECTION_GAP: f32 = 12.0;
 
 const ROW_H: f32 = LINE_H + BAR_GAP + BAR_H + DETAIL_GAP + DETAIL_H;
-const SECTION_H: f32 = HEADER_H + HEADER_GAP + ROW_H * 2.0 + ROW_GAP + STATUS_GAP + STATUS_H * 4.0;
+const SECTION_H: f32 = HEADER_H + HEADER_GAP + ROW_H * 2.0 + ROW_GAP + STATUS_GAP + STATUS_H * 4.0 + PACE_GAP + PACE_H;
 /// A provider with nothing to show: its header, a notice and an action line.
 const NOTICE_H: f32 = HEADER_H + HEADER_GAP + STATUS_H * 2.0;
 /// The gaps and the rule between two sections.
@@ -116,7 +118,15 @@ mod tests {
         assert_eq!(link_hit(&free, x(1.0), (codex_link - STATUS_H) as i32, 1.0), None);
         free[1].retry = "正在重新检查…".into();
         assert_eq!(link_hit(&free, x(1.0), codex_link as i32, 1.0), None, "no second click while one is pending");
-        for (name, panel) in [("panel", &panel), ("free", &free)] {
+        // Fresh readings add the pace line under the provenance.
+        let ok = panel::build(&cache, &[None, None], &Context {
+            current: Provider::Claude, show_remaining: true, thresholds: Thresholds::default(), now, utc_offset: 8 * 3600,
+        });
+        assert!(!ok[0].pace.is_empty());
+        let mut ok = ok;
+        ok[1].pace = "5 小时额度用得较快，预计 星期三 00:25 用完".into(); // about the longest line
+        assert_eq!(size(1.0, &ok), size(1.0, &panel), "the panel keeps its size whether or not a pace is shown");
+        for (name, panel) in [("panel", &panel), ("free", &free), ("ok", &ok)] {
             for light in [false, true] {
                 for scale in [1.0, 1.75] {
                     let (w, h) = size(scale, panel);
@@ -154,6 +164,7 @@ enum Face {
     Body,
     BodyBold,
     Small,
+    Pace,
 }
 
 struct Text<'a> {
@@ -228,6 +239,11 @@ pub fn paint(surface: &mut Surface, scratch: &mut Surface, panel: &Panel, light:
             y += STATUS_H;
             texts.push(Text { face: Face::Small, text: &section.provenance, y, h: STATUS_H, align: Align::Left, color: secondary });
             y += STATUS_H;
+            // The pace stands apart from the status lines, larger than the body text.
+            y += PACE_GAP;
+            let color = if section.pace_warn { WARNING_TEXT } else { primary };
+            texts.push(Text { face: Face::Pace, text: &section.pace, y, h: PACE_H, align: Align::Left, color });
+            y += PACE_H;
             texts.push(Text { face: Face::Small, text: &section.retry, y, h: STATUS_H, align: Align::Left, color: secondary });
             y += STATUS_H;
             if let Some(link) = link(section) {
@@ -242,12 +258,14 @@ pub fn paint(surface: &mut Surface, scratch: &mut Surface, panel: &Panel, light:
     let body = Font::new(px(12.0), false);
     let body_bold = Font::new(px(12.0), true);
     let small = Font::new(px(11.0), false);
+    let pace = Font::new(px(13.0), false);
     for t in texts {
         let font = match t.face {
             Face::Title => &title,
             Face::Body => &body,
             Face::BodyBold => &body_bold,
             Face::Small => &small,
+            Face::Pace => &pace,
         };
         // The title sits to the right of the provider dot.
         let left = if matches!(t.face, Face::Title) { PAD + 14.0 } else { PAD };

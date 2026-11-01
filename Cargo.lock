@@ -10,7 +10,7 @@ checksum = "ba92c8f4591bf29f89716b45e5f5f56577adbb81426e5620c6e994da7c88bb7a"
 
 [[package]]
 name = "iusage"
-version = "0.1.15"
+version = "0.1.19"
 dependencies = [
  "embed-manifest",
  "tinyjson",

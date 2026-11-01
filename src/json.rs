@@ -2,7 +2,7 @@
 
 use tinyjson::JsonValue;
 
-/// Settings/cache are normally under a kilobyte. Bound reads even if a file grows
+/// Settings, cache and credentials are small. Bound reads even if a file grows
 /// while open, so an accidentally replaced file cannot consume arbitrary memory.
 pub fn read_small_file(path: &std::path::Path) -> std::io::Result<String> {
     use std::io::{Read, Error, ErrorKind};

@@ -112,6 +112,21 @@ pub fn clock(t: i64, now: i64, utc_offset: i64) -> String {
     }
 }
 
+/// Like `clock`, but names the weekday for a moment later this week:
+/// `今天 13:30`, `明天 10:00`, `星期五 10:00`, `11月9日 10:00`.
+pub fn weekday_clock(t: i64, now: i64, utc_offset: i64) -> String {
+    const NAMES: [&str; 7] = ["星期四", "星期五", "星期六", "星期日", "星期一", "星期二", "星期三"];
+    let day = (t + utc_offset).div_euclid(86_400);
+    match day - (now + utc_offset).div_euclid(86_400) {
+        2..=6 => {
+            let minutes = (t + utc_offset).rem_euclid(86_400) / 60;
+            // 1 January 1970 was a Thursday.
+            format!("{} {:02}:{:02}", NAMES[day.rem_euclid(7) as usize], minutes / 60, minutes % 60)
+        }
+        _ => clock(t, now, utc_offset),
+    }
+}
+
 /// Month and day of month for a day count since 1970-01-01; the inverse of `days_from_civil`.
 fn month_day_from_days(days: i64) -> (i64, i64) {
     let doe = (days + 719_468).rem_euclid(146_097);
@@ -149,6 +164,15 @@ mod tests {
         assert_eq!(clock(reset, 1_790_871_000, CST), "今天 01:30"); // asked at 00:10 on 2 October
         assert_eq!(clock(1_791_108_875, 1_790_860_000, CST), "10月4日 18:14");
         assert_eq!(clock(reset, 1_790_860_000, 0), "今天 17:30");
+    }
+
+    #[test]
+    fn weekday_clock_names_days_this_week() {
+        let now = 1_790_860_000; // Thursday 1 October 2026, 21:06 in UTC+8
+        assert_eq!(weekday_clock(1_790_875_800, now, CST), "明天 01:30");
+        assert_eq!(weekday_clock(1_791_108_875, now, CST), "星期日 18:14"); // 4 October
+        assert_eq!(weekday_clock(now + 6 * 86_400, now, CST), "星期三 21:06");
+        assert_eq!(weekday_clock(now + 7 * 86_400, now, CST), "10月8日 21:06");
     }
 
     #[test]

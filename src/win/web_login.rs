@@ -51,7 +51,7 @@ fn decode(encoded: &str) -> Result<Session, String> {
 }
 
 pub fn load() -> Result<Session, String> {
-    decode(&std::fs::read_to_string(path()).map_err(|_| "请先配置 Claude 网页登录信息。")?)
+    decode(&crate::json::read_small_file(&path()).map_err(|_| "请先配置 Claude 网页登录信息。")?)
 }
 
 pub fn selected(settings: &Settings) -> Result<Option<Session>, FetchError> {
