@@ -4,7 +4,7 @@ version = "0.1.19"
 edition = "2021"
 description = "Taskbar usage meter for Claude and Codex"
 license = "MIT"
-repository = "https://github.com/guiwang1201/ai-usage-taskbar"
+repository = "https://github.com/guiwang1201/IUsage-ai-usage-monitor"
 build = "build.rs"
 
 [dependencies]
