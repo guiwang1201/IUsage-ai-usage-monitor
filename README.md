@@ -2,7 +2,7 @@
 
 在 Windows 11 任务栏上直接显示 **Claude** 和 **Codex** 的用量，不用再打开网页查还剩多少额度。
 
-![任务栏上的进度条](docs/screenshots/claude.png)
+![任务栏上的进度条](docs/screenshots/claude-taskbar-20261028.png)
 
 **[⬇ 下载最新版（Windows x64）](../../releases)** · [快速开始](docs/QUICKSTART.md) · [隐私说明](PRIVACY.md) · [更新记录](CHANGELOG.md)
 
@@ -15,7 +15,7 @@
 - **低额度通知**：剩余 20%、10%、5% 时各弹一次系统通知。
 - **详情面板**：点一下进度条，同时查看 Claude 和 Codex 的用量和精确重置时间。
 
-![详情面板](docs/screenshots/panel.png)
+![详情面板](docs/screenshots/usage-panel-20261028.png)
 
 - **一键切换**：点进度条左边的字母，`C` 是 Claude，`X` 是 Codex。
 - **显示已用或剩余**：右键菜单里切换。
