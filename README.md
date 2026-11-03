@@ -4,7 +4,7 @@
 
 ![任务栏上的进度条](docs/screenshots/claude-taskbar-20261028.png)
 
-**[⬇ 下载最新版（Windows x64）](../../releases)** · [快速开始](docs/QUICKSTART.md) · [隐私说明](PRIVACY.md) · [更新记录](CHANGELOG.md)
+**[⬇ 下载 v0.1.19（Windows x64 ZIP）](https://github.com/guiwang1201/IUsage-ai-usage-monitor/releases/download/v0.1.19/IUsage-v0.1.19-windows-x64.zip)** · [最新正式版](https://github.com/guiwang1201/IUsage-ai-usage-monitor/releases/latest) · [快速开始](docs/QUICKSTART.md) · [隐私说明](PRIVACY.md) · [更新记录](CHANGELOG.md)
 
 > 这是非官方工具，所用接口随时可能被官方改动而失效。
 
@@ -25,7 +25,7 @@
 
 ## 开始使用
 
-1. **下载**：从 [Release 页面](../../releases) 下载 ZIP，解压到一个固定的本地文件夹（例如 `D:\Tools\IUsage\`）。不要放在 OneDrive 等同步文件夹里，也不要直接在压缩包里运行。
+1. **下载**：从 [最新正式版页面](https://github.com/guiwang1201/IUsage-ai-usage-monitor/releases/latest) 下载 ZIP，解压到一个固定的本地文件夹（例如 `D:\Tools\IUsage\`）。不要放在 OneDrive 等同步文件夹里，也不要直接在压缩包里运行。
 2. **运行**：双击 `IUsage.exe`。程序没有代码签名，Windows 可能提示“已保护你的电脑”，点 **更多信息 → 仍要运行** 即可；请不要为此关闭系统安全防护。
 3. **登录**：
    - **Codex**：只要在这台电脑上登录过 Codex（客户端或命令行），就会自动读取，不用设置。
@@ -81,7 +81,7 @@
 
 ## 问题反馈
 
-遇到问题请提交 [Issue](../../issues)。安全问题请按 [安全反馈](SECURITY.md) 私下报告。
+遇到问题请提交 [Issue](https://github.com/guiwang1201/IUsage-ai-usage-monitor/issues)。安全问题请按 [安全反馈](SECURITY.md) 私下报告。
 
 想了解实现原理或自己编译，请看 [技术说明](docs/TECHNICAL.md)。
 
