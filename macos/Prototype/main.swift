@@ -16,7 +16,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var sectionResets: [[NSTextField]] = []
     private var sectionStatuses: [NSTextField] = []
-    private var sectionPaces: [NSTextField] = []
+    private var sectionPaces: [PaceCard] = []
     private var sectionPercentages: [[NSTextField]] = []
     private var sectionProgress: [[NSProgressIndicator]] = []
     private var activityTimer: Timer?
@@ -66,7 +66,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
             button.setAccessibilityLabel("IUsage 模拟数据：Claude，5 小时已用 32%，7 天已用 64%")
         }
         let controller = NSViewController()
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 370, height: 470))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 370, height: 500))
         controller.view = root
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -179,11 +179,13 @@ final class Prototype: NSObject, NSApplicationDelegate {
             stack.addArrangedSubview(reset)
         }
         // Whether the quota should last until it resets, below the rows as on Windows.
-        let pace = label("", size: 12)
+        // It sits in its own tinted card, so it does not read as one more status line.
+        let pace = PaceCard()
         pace.isHidden = true
         sectionPaces.append(pace)
         stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(pace)
+        pace.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         sectionResets.append(resetLabels)
         sectionPercentages.append(percentages)
         sectionProgress.append(indicators)
@@ -201,9 +203,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
             let values = reading?.values(now: now) ?? [nil, nil]
             // Only judged from a fresh reading, as on Windows; the mock readings have no reset times.
             let pace = issue == nil ? reading.map { PacePolicy.line(reading: $0, now: now) } : nil
-            sectionPaces[provider].stringValue = pace?.text ?? ""
-            sectionPaces[provider].textColor = pace?.warn == true ? .systemOrange : .labelColor
-            sectionPaces[provider].isHidden = pace?.text.isEmpty ?? true
+            sectionPaces[provider].show(pace?.text ?? "", warn: pace?.warn == true)
             for index in 0...1 {
                 if cachedOnly {
                     let reset = index == 0 ? reading?.fiveReset : reading?.sevenReset
@@ -465,3 +465,54 @@ let app = NSApplication.shared
 let delegate = Prototype()
 app.delegate = delegate
 app.run()
+
+/// The pace line as a small card of its own: an icon and a tint mark it apart from the
+/// status lines above it; orange when the quota may not last, green when it is steady.
+final class PaceCard: NSView {
+    private let icon = NSImageView()
+    private let text = NSTextField(wrappingLabelWithString: "")
+    private var warn = false
+    init() {
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+        text.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        text.textColor = .labelColor
+        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        let row = NSStackView(views: [icon, text])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 7
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 7),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7)
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+    }
+    required init?(coder: NSCoder) { nil }
+    func show(_ line: String, warn: Bool) {
+        self.warn = warn
+        text.stringValue = line
+        setAccessibilityLabel(line)
+        icon.image = NSImage(systemSymbolName: warn ? "exclamationmark.triangle.fill" : "checkmark.circle.fill", accessibilityDescription: nil)
+        icon.contentTintColor = warn ? .systemOrange : .systemGreen
+        isHidden = line.isEmpty
+        needsDisplay = true
+    }
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        // Resolved here so the tint follows light and dark mode.
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            let tint: NSColor = warn ? .systemOrange : .systemGreen
+            layer?.backgroundColor = tint.withAlphaComponent(0.14).cgColor
+            layer?.borderColor = tint.withAlphaComponent(0.35).cgColor
+            layer?.borderWidth = 1
+        }
+    }
+}
