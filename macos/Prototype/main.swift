@@ -185,7 +185,8 @@ final class Prototype: NSObject, NSApplicationDelegate {
         sectionPaces.append(pace)
         stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
         stack.addArrangedSubview(pace)
-        pace.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        // A fixed width (the panel's content width), so both cards line up whatever their text.
+        pace.widthAnchor.constraint(equalToConstant: 330).isActive = true
         sectionResets.append(resetLabels)
         sectionPercentages.append(percentages)
         sectionProgress.append(indicators)
