@@ -16,6 +16,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var sectionResets: [[NSTextField]] = []
     private var sectionStatuses: [NSTextField] = []
+    private var sectionPaces: [NSTextField] = []
     private var sectionPercentages: [[NSTextField]] = []
     private var sectionProgress: [[NSProgressIndicator]] = []
     private var activityTimer: Timer?
@@ -65,7 +66,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
             button.setAccessibilityLabel("IUsage 模拟数据：Claude，5 小时已用 32%，7 天已用 64%")
         }
         let controller = NSViewController()
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 370, height: 420))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 370, height: 470))
         controller.view = root
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -91,7 +92,7 @@ final class Prototype: NSObject, NSApplicationDelegate {
         let footer = NSStackView()
         footer.orientation = .horizontal
         footer.spacing = 14
-        let hint = label(live ? "正常 3 分钟 · 空闲 15 分钟刷新" : cachedOnly ? "只读缓存 · 无网络请求" : "模拟调度 · 未连接服务", size: 10)
+        let hint = label(live ? "正常 \(requestGap) 秒 · 空闲 15 分钟刷新" : cachedOnly ? "只读缓存 · 无网络请求" : "模拟调度 · 未连接服务", size: 10)
         hint.textColor = .secondaryLabelColor
         footer.addArrangedSubview(hint)
         footer.addArrangedSubview(NSButton(title: "退出", target: self, action: #selector(quit)))
@@ -177,6 +178,12 @@ final class Prototype: NSObject, NSApplicationDelegate {
             resetLabels.append(reset)
             stack.addArrangedSubview(reset)
         }
+        // Whether the quota should last until it resets, below the rows as on Windows.
+        let pace = label("", size: 12)
+        pace.isHidden = true
+        sectionPaces.append(pace)
+        stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
+        stack.addArrangedSubview(pace)
         sectionResets.append(resetLabels)
         sectionPercentages.append(percentages)
         sectionProgress.append(indicators)
@@ -192,6 +199,11 @@ final class Prototype: NSObject, NSApplicationDelegate {
             let source = !cachedOnly ? "模拟数据" : provider == 0 ? (runtime.state.claudeSessionIdentity == nil ? "旧缓存" : "Claude 网页") : "Codex"
             sectionStatuses[provider].stringValue = issue.map { reading == nil ? "\($0) · 暂无数据" : "\($0) · 显示缓存 · \(updated)" } ?? "\(source) · \(updated)"
             let values = reading?.values(now: now) ?? [nil, nil]
+            // Only judged from a fresh reading, as on Windows; the mock readings have no reset times.
+            let pace = issue == nil ? reading.map { PacePolicy.line(reading: $0, now: now) } : nil
+            sectionPaces[provider].stringValue = pace?.text ?? ""
+            sectionPaces[provider].textColor = pace?.warn == true ? .systemOrange : .labelColor
+            sectionPaces[provider].isHidden = pace?.text.isEmpty ?? true
             for index in 0...1 {
                 if cachedOnly {
                     let reset = index == 0 ? reading?.fiveReset : reading?.sevenReset

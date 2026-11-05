@@ -34,10 +34,21 @@ struct CredentialReader {
         self.readFile = readFile
     }
 
+    /// Credentials are small; as on Windows, the read itself is bounded, so a bloated or
+    /// replaced file cannot consume arbitrary memory. Oversized files read as malformed.
+    static let maxFileBytes = 1_048_576
     static func systemFile(_ url: URL) throws -> Data {
-        do { return try Data(contentsOf: url) }
+        do {
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let data = try handle.read(upToCount: maxFileBytes + 1) ?? Data()
+            guard data.count <= maxFileBytes else { throw CredentialFailure.malformed }
+            return data
+        }
+        catch let failure as CredentialFailure { throw failure }
         catch let error as NSError {
-            if error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
+            if error.domain == NSCocoaErrorDomain && [NSFileReadNoSuchFileError, NSFileNoSuchFileError].contains(error.code)
+                || error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
                 throw CredentialFailure.missing
             }
             throw CredentialFailure.accessRequired

@@ -70,3 +70,15 @@ check(LocalIssue(CredentialFailure.expired, provider: 1).recheckSeconds == 15)
 check(LocalIssue(CredentialFailure.malformed, provider: 0).recheckSeconds == 60)
 check(LocalIssue(CocoaError(.fileReadUnknown), provider: 0).label == "凭据不可用")
 print("PASS: local credential problems map to distinct labels and recheck intervals")
+
+// As on Windows, credential reads are bounded: a bloated file is rejected without loading it all.
+let sizeDir = FileManager.default.temporaryDirectory.appendingPathComponent("iusage-size-\(UUID().uuidString)")
+try! FileManager.default.createDirectory(at: sizeDir, withIntermediateDirectories: true)
+defer { try? FileManager.default.removeItem(at: sizeDir) }
+let small = sizeDir.appendingPathComponent("small.json"), large = sizeDir.appendingPathComponent("large.json")
+try! Data("{}".utf8).write(to: small)
+try! Data(count: CredentialReader.maxFileBytes + 1).write(to: large)
+check((try? CredentialReader.systemFile(small)) == Data("{}".utf8))
+do { _ = try CredentialReader.systemFile(large); check(false) } catch CredentialFailure.malformed {} catch { check(false) }
+do { _ = try CredentialReader.systemFile(sizeDir.appendingPathComponent("absent.json")); check(false) } catch CredentialFailure.missing {} catch { check(false) }
+print("PASS: credential file reads are bounded to 1 MiB")

@@ -82,7 +82,7 @@ do {
         .replacingOccurrences(of: String((now - 60) * 1000), with: String((now + 28_800) * 1000))
         .replacingOccurrences(of: "1791900000000", with: String((now + 2_592_000) * 1000))
     check(text(w.keychain) == expected)
-    check(w.saved.gates[0].nextPoll == now + 65 && w.saved.gates[0].blockedUntil == 0 && w.saved.gates[0].backoff == 0)
+    check(w.saved.gates[0].nextPoll == now + requestGap && w.saved.gates[0].blockedUntil == 0 && w.saved.gates[0].backoff == 0)
     check(w.runtime.issue(0) == nil)
     // The gap holds: no second renewal right away.
     check(w.renew() == .wait)

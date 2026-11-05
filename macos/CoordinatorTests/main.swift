@@ -50,7 +50,7 @@ webPending?(.success(.init(status: 200, body: Data(#"[{"uuid":"org-1"}]"#.utf8),
 drain { finished }
 precondition(webSaved.claudeOrganization == "org-1" && webSaved.readings[0] == nil)
 precondition(try! !web.fetchClaude(session: session) { _ in })
-clock += 65; finished = false
+clock += requestGap; finished = false
 precondition(try! web.fetchClaude(session: session) { _ in finished = true })
 precondition(webURL?.path == "/api/organizations/org-1/usage")
 webPending?(.success(.init(status: 429, body: Data(), retryAfter: 86400)))

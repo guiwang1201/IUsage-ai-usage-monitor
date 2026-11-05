@@ -145,7 +145,7 @@ fn pace_of(window: Option<Window>, length: i64, now: i64) -> Option<(Pace, i64)>
 
 /// One line on whether the quota will last, from the window that looks worse; the
 /// weekly one when they look the same.
-fn pace(usage: &crate::model::Usage, ctx: &Context) -> (String, bool) {
+pub(crate) fn pace(usage: &crate::model::Usage, ctx: &Context) -> (String, bool) {
     let weekly = pace_of(usage.seven_day, 7 * 86_400, ctx.now).map(|p| ("", p));
     let session = pace_of(usage.five_hour, 5 * 3600, ctx.now).map(|p| ("5 小时", p));
     let worse = match (weekly, session) {

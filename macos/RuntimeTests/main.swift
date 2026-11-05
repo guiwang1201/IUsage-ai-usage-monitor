@@ -3,21 +3,22 @@ let root = FileManager.default.temporaryDirectory.appendingPathComponent("iusage
 defer { try? FileManager.default.removeItem(at: root) }
 let store = OfflineStore(url: root.appendingPathComponent("cache.json"))
 let runtime = OfflineRuntime(state: try store.load(), save: store.save)
+let gap = requestGap
 let body = #"{"five_hour":{"utilization":32},"seven_day":{"utilization":64}}"#
 var sends = 0
 precondition(try! runtime.simulate(provider: 0, now: 1000, status: 200, body: body, onSend: { sends += 1 }))
 precondition(runtime.state.readings[0]?.five == 32)
-precondition(runtime.nextEvent(provider: 0, now: 1001, idle: false) == 1065)
+precondition(runtime.nextEvent(provider: 0, now: 1001, idle: false) == 1000 + gap)
 precondition(runtime.nextEvent(provider: 0, now: 1001, idle: true) == 1900)
 let restarted = OfflineRuntime(state: try store.load(), save: store.save)
-precondition(try! !restarted.simulate(provider: 0, now: 1064, status: 200, body: body, onSend: { sends += 1 }))
+precondition(try! !restarted.simulate(provider: 0, now: 1000 + gap - 1, status: 200, body: body, onSend: { sends += 1 }))
 precondition(sends == 1)
-precondition(try! restarted.simulate(provider: 0, now: 1065, status: 429, retryAfter: 600, body: ""))
+precondition(try! restarted.simulate(provider: 0, now: 1000 + gap, status: 429, retryAfter: 600, body: ""))
 let cooled = OfflineRuntime(state: try store.load(), save: store.save)
-precondition(cooled.nextEvent(provider: 0, now: 1300, idle: false) == 1665)
+precondition(cooled.nextEvent(provider: 0, now: 1300, idle: false) == 1600 + gap)
 precondition(cooled.state.readings[0]?.five == 32)
-precondition(try! !cooled.simulate(provider: 0, now: 1664, status: 200, body: body))
-precondition(try! cooled.simulate(provider: 0, now: 1665, status: 200, body: "{}"))
+precondition(try! !cooled.simulate(provider: 0, now: 1599 + gap, status: 200, body: body))
+precondition(try! cooled.simulate(provider: 0, now: 1600 + gap, status: 200, body: "{}"))
 precondition(cooled.state.readings[0]?.fetchedAt == 1000)
 try cooled.select(1)
 precondition(try! store.load().selectedProvider == 1)
@@ -27,7 +28,7 @@ catch {}
 let partial = OfflineRuntime(state: OfflineState(), save: { _ in })
 precondition(try! partial.simulate(provider: 0, now: 1000, status: 200, body: #"{"five_hour":null,"seven_day":{"utilization":0}}"#))
 precondition(partial.state.readings[0]?.five == nil && partial.state.readings[0]?.seven == 0)
-precondition(try! partial.simulate(provider: 0, now: 1065, status: 0, body: ""))
+precondition(try! partial.simulate(provider: 0, now: 1000 + gap, status: 0, body: ""))
 precondition(partial.errors[0] == "离线" && partial.state.readings[0]?.seven == 0)
 var corrupt = OfflineState()
 corrupt.gates[0].blockedUntil = Int64.max
@@ -87,6 +88,15 @@ precondition(alerts(97, 8203, now: 1090).isEmpty)
 // Once the old reset has passed, the new window can alert again.
 precondition(alerts(82, 30_000, now: 8300) == ["5 小时额度剩余 18%，6h 后重置"])
 print("PASS: alerts deduplicate and rearm on a new window")
+
+// The detail panel's pace line comes from the shared Windows rules.
+let paceNow: Int64 = 1_790_860_000 // Thursday 1 October 2026, 21:06 in UTC+8
+let weekly = SavedReading(five: nil, seven: 40, fetchedAt: paceNow, fiveReset: nil, sevenReset: paceNow + 5 * 86_400)
+precondition(PacePolicy.line(reading: weekly, now: paceNow, utcOffset: 8 * 3600) == ("额度用得较快，预计 星期日 21:06 用完", true))
+let calm = SavedReading(five: 10, seven: 20, fetchedAt: paceNow, fiveReset: paceNow + 7200, sevenReset: paceNow + 5 * 86_400)
+precondition(PacePolicy.line(reading: calm, now: paceNow, utcOffset: 8 * 3600) == ("进度正常，星期二 21:06 重置前额度充裕", false))
+precondition(PacePolicy.line(reading: SavedReading(five: 50, seven: 50, fetchedAt: paceNow, fiveReset: nil, sevenReset: nil), now: paceNow).text.isEmpty)
+print("PASS: pace line matches the Windows detail panel")
 
 let issues = OfflineRuntime(state: OfflineState(), save: { _ in })
 precondition(issues.issue(0) == nil && issues.issue(2) == nil)
