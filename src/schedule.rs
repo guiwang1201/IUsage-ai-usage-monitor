@@ -8,6 +8,9 @@ use crate::model::FetchError;
 pub const MIN_GAP_SECS: i64 = 50;
 /// How often the reading is refreshed while nobody is at the machine.
 pub const IDLE_POLL_SECS: i64 = 900;
+/// Retry interval while the network is down. Nothing reaches a server then, so this
+/// only bounds how long a reconnection goes unnoticed.
+pub const OFFLINE_RETRY_SECS: i64 = 30;
 /// Bounds ordinary poll scheduling after a clock change, never a server cooldown.
 pub const MAX_WAIT_SECS: i64 = 2 * 3600;
 
@@ -48,6 +51,14 @@ impl State {
         if matches!(error, FetchError::NoCredentials | FetchError::Expired) {
             self.last_attempt = 0;
             self.blocked_until = now + 15;
+            self.next_poll = self.blocked_until;
+            return;
+        }
+        // Equally certain, and the network may come back at any moment: a fixed short
+        // retry instead of a growing backoff, which is kept for the next real failure.
+        if matches!(error, FetchError::Offline(_)) {
+            self.last_attempt = 0;
+            self.blocked_until = now + OFFLINE_RETRY_SECS;
             self.next_poll = self.blocked_until;
             return;
         }
@@ -134,6 +145,25 @@ mod tests {
         // Waking or forcing the periodic schedule cannot remove the error wait.
         state.next_poll = 0;
         assert!(!state.due(None, false, NOW + 20));
+    }
+
+    #[test]
+    fn an_unreachable_network_is_retried_soon_without_growing_the_backoff() {
+        let mut state = State::default();
+        state.failed(&FetchError::RateLimited(None), NOW);
+        assert_eq!(state.backoff, 300);
+        for n in 0..10 {
+            let at = NOW + 300 + n * OFFLINE_RETRY_SECS;
+            assert!(state.can_request(at));
+            state.started(at);
+            state.failed(&FetchError::Offline("not sent: x".into()), at);
+            assert!(!state.can_request(at + OFFLINE_RETRY_SECS - 1));
+            assert!(state.due(None, false, at + OFFLINE_RETRY_SECS));
+        }
+        assert_eq!(state.backoff, 300, "the rate-limit progression is untouched");
+        // A failure that may have reached the server still backs off as before.
+        state.failed(&FetchError::Network("receive timeout".into()), NOW + 1000);
+        assert!(!state.can_request(NOW + 1000 + 599));
     }
 
     #[test]

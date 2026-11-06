@@ -61,6 +61,15 @@ pub struct Response {
 /// Platform HTTP client.
 pub type Http = fn(&Request) -> Result<Response, String>;
 
+/// Starts an HTTP client error that proves nothing reached a server (name not
+/// resolved, connection refused or unreachable).
+pub const NOT_SENT: &str = "not sent: ";
+
+/// The fetch error for an HTTP client failure.
+pub fn transport(error: String) -> FetchError {
+    if error.starts_with(NOT_SENT) { FetchError::Offline(error) } else { FetchError::Network(error) }
+}
+
 /// Select locally before any I/O. A failure never triggers another channel.
 pub fn fetch_selected(provider: Provider, env: &Env, now: i64, http: Http,
     session: Option<&web::Session>, before_network: &mut dyn FnMut() -> Result<(), FetchError>,
@@ -102,7 +111,7 @@ pub fn prepare(
 }
 
 pub fn send_request(provider: Provider, request: &Request, http: Http) -> Result<Usage, FetchError> {
-    let response = http(request).map_err(FetchError::Network)?;
+    let response = http(request).map_err(transport)?;
     match response.status {
         200 => read_answer(provider, &response.body),
         401 | 403 => Err(FetchError::Unauthorized),
@@ -436,7 +445,7 @@ pub fn refresh_claude(
     };
 
     before_network()?;
-    let response = http(&plan.request).map_err(FetchError::Network)?;
+    let response = http(&plan.request).map_err(transport)?;
     let Some(updated) = finish_claude_refresh(&plan, &response, now, &mut || read())? else {
         return Ok(());
     };

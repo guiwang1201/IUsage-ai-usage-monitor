@@ -112,5 +112,8 @@ pub enum FetchError {
     Unsubscribed,
     Http(u16),
     Network(String),
+    /// The request never left this machine: the name did not resolve or no connection
+    /// could be made. No server saw it, so it costs nothing against a rate limit.
+    Offline(String),
     Parse,
 }

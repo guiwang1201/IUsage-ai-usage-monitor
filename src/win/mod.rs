@@ -16,6 +16,7 @@ use std::ffi::c_void;
 use std::path::PathBuf;
 use std::ptr::{null, null_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::{self, Sender, SyncSender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -203,6 +204,30 @@ struct Drag {
     start_x: i32,
 }
 
+/// A job for the cache writer. A request worker waits for the acknowledgement of its
+/// save, so its cooldown is on disk before anything is sent.
+enum Save {
+    Write(Stored, Option<SyncSender<std::io::Result<()>>>),
+    Stop,
+}
+
+/// Writes `cache.json` on a thread of its own, in the order the saves were asked for.
+/// Each save is flushed to disk, which can take tens of milliseconds; the UI thread
+/// shares its input queue with Explorer and must not wait for that.
+fn start_saver(path: PathBuf) -> Option<(Sender<Save>, JoinHandle<()>)> {
+    let (sender, jobs) = mpsc::channel::<Save>();
+    let writer = std::thread::Builder::new().stack_size(128 * 1024).spawn(move || {
+        for job in jobs {
+            let Save::Write(stored, ack) = job else { break };
+            let result = cache::save(&path, &stored);
+            if let Some(ack) = ack {
+                let _ = ack.send(result);
+            }
+        }
+    });
+    writer.ok().map(|writer| (sender, writer))
+}
+
 /// The detail panel while it is open.
 struct Popup {
     hwnd: HWND,
@@ -222,6 +247,9 @@ struct App {
     settings: Settings,
     settings_path: PathBuf,
     cache_path: PathBuf,
+    /// The cache writer; `None` if its thread could not be started, and saves then run
+    /// where they are asked for.
+    saver: Option<(Sender<Save>, JoinHandle<()>)>,
     error_path: PathBuf,
     env: Arc<Env>,
     // Per-provider readings, errors and persisted request timing.
@@ -379,6 +407,7 @@ pub fn run() {
             scratch: None,
             settings,
             settings_path,
+            saver: start_saver(cache_path.clone()),
             cache_path,
             error_path: settings_dir.join("last-error.txt"),
             env: provider_env(),
@@ -711,6 +740,11 @@ impl App {
 
     fn save_cache(&self) {
         // Best effort: without the file a restart just fetches again.
+        if let Some((saver, _)) = &self.saver {
+            if saver.send(Save::Write(self.stored(), None)).is_ok() {
+                return;
+            }
+        }
         let _ = cache::save(&self.cache_path, &self.stored());
     }
 
@@ -1078,6 +1112,12 @@ impl App {
             DestroyIcon(self.icon);
             self.icon = null_mut();
         }
+        // Saves already asked for are written before the process ends. A request worker
+        // that persists after this gets an error and sends nothing.
+        if let Some((saver, writer)) = self.saver.take() {
+            let _ = saver.send(Save::Stop);
+            let _ = writer.join();
+        }
     }
 
     fn start_fetch(&mut self, provider: Provider) {
@@ -1090,6 +1130,7 @@ impl App {
         self.schedule[i].started(now);
         let stored = self.stored();
         let cache_path = self.cache_path.clone();
+        let saver = self.saver.as_ref().map(|(saver, _)| saver.clone());
         let env = Arc::clone(&self.env);
         let settings = self.settings.clone();
         let main = self.main as usize;
@@ -1100,8 +1141,18 @@ impl App {
             let persisted = std::cell::Cell::new(false);
             let persist = || -> Result<(), FetchError> {
                 if !persisted.replace(true) {
-                    cache::save(&cache_path, &stored)
-                        .map_err(|e| FetchError::Network(format!("Cannot persist request cooldown: {e}")))?;
+                    // Through the writer, so an earlier save still queued there cannot
+                    // land after this one and take the cooldown off the disk.
+                    let saved = match &saver {
+                        Some(saver) => {
+                            let (ack, done) = mpsc::sync_channel(1);
+                            saver.send(Save::Write(stored, Some(ack))).map_err(|_| "cache writer stopped".to_string())
+                                .and_then(|()| done.recv().map_err(|_| "cache writer stopped".to_string()))
+                                .and_then(|result| result.map_err(|e| e.to_string()))
+                        }
+                        None => cache::save(&cache_path, &stored).map_err(|e| e.to_string()),
+                    };
+                    saved.map_err(|e| FetchError::Network(format!("Cannot persist request cooldown: {e}")))?;
                 }
                 Ok(())
             };
@@ -1181,7 +1232,7 @@ impl App {
                 if self.error[i].as_ref() != Some(&error) {
                     let _ = std::fs::write(&self.error_path, format!("{}: {error:?}\n", provider.name()));
                 }
-                let local = matches!(error, FetchError::NoCredentials | FetchError::Expired);
+                let local = matches!(error, FetchError::NoCredentials | FetchError::Expired | FetchError::Offline(_));
                 self.error[i] = Some(error);
                 if !local {
                     self.save_cache();
@@ -1332,5 +1383,31 @@ impl App {
     fn commit_offset(&mut self) {
         self.settings.offset_x = ((self.geom.anchor - self.geom.x) as f32 / self.geom.scale).round() as i32;
         self.save_settings();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_cache_writer_keeps_order_and_acknowledges_after_writing() {
+        let path = std::env::temp_dir().join(format!("iusage-saver-{}.json", std::process::id()));
+        let (saver, writer) = start_saver(path.clone()).unwrap();
+        let mut stored = Stored::default();
+        for n in 1..=20 {
+            stored.schedule[0].last_attempt = n;
+            saver.send(Save::Write(stored, None)).unwrap();
+        }
+        stored.schedule[1].blocked_until = 99;
+        let (ack, done) = mpsc::sync_channel(1);
+        saver.send(Save::Write(stored, Some(ack))).unwrap();
+        done.recv().unwrap().unwrap();
+        // Acknowledged means on disk, with nothing older written after it.
+        assert_eq!(cache::load(&path).schedule, stored.schedule);
+        saver.send(Save::Stop).unwrap();
+        writer.join().unwrap();
+        assert!(saver.send(Save::Write(stored, None)).is_err(), "a stopped writer refuses, so nothing is sent unsaved");
+        std::fs::remove_file(path).unwrap();
     }
 }

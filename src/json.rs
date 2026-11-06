@@ -18,8 +18,12 @@ pub fn read_small_file(path: &std::path::Path) -> std::io::Result<String> {
 /// Replace a complete file so a crash cannot leave a truncated settings/cache file.
 pub fn write_file(path: &std::path::Path, text: &str) -> std::io::Result<()> {
     use std::io::Write;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    // Unique per write: two threads saving the same file at once must not share (and
+    // interleave into) one temporary file.
+    static SEQUENCE: AtomicU32 = AtomicU32::new(0);
     let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(".{}.tmp", std::process::id()));
+    name.push(format!(".{}.{}.tmp", std::process::id(), SEQUENCE.fetch_add(1, Ordering::Relaxed)));
     let temporary = path.with_file_name(name);
     let result = (|| {
         let mut file = std::fs::File::create(&temporary)?;
@@ -121,6 +125,21 @@ mod tests {
         assert_eq!(read_small_file(&path).unwrap().len(), 1024 * 1024);
         std::fs::write(&path, vec![b' '; 1024 * 1024 + 1]).unwrap();
         assert_eq!(read_small_file(&path).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn concurrent_replacements_leave_one_complete_file() {
+        let path = std::env::temp_dir().join(format!("iusage-concurrent-{}.json", std::process::id()));
+        let texts: Vec<String> = (0..8).map(|n| format!("{{\"n\":{n},\"pad\":\"{}\"}}", "x".repeat(4096))).collect();
+        std::thread::scope(|scope| {
+            for text in &texts {
+                let path = &path;
+                scope.spawn(move || for _ in 0..20 { let _ = write_file(path, text); });
+            }
+        });
+        let result = read_small_file(&path).unwrap();
+        assert!(texts.contains(&result), "a whole file from one writer");
         std::fs::remove_file(path).unwrap();
     }
 

@@ -141,7 +141,7 @@ fn short_label(error: &FetchError) -> String {
         FetchError::WebForbidden => "网页受阻".to_string(),
         FetchError::PreviousFailure => "待更新".to_string(),
         FetchError::Unsubscribed => "未订阅".to_string(),
-        FetchError::Network(_) => "离线".to_string(),
+        FetchError::Network(_) | FetchError::Offline(_) => "离线".to_string(),
         FetchError::Http(code) => format!("HTTP {code}"),
         FetchError::Parse => "错误".to_string(),
     }
@@ -166,17 +166,17 @@ pub fn describe(provider: Provider, error: &FetchError) -> String {
         FetchError::CannotSave => "凭据无法安全保存，请检查 Claude Code 的 .credentials.json 是否可写".to_string(),
         FetchError::RateLimited(_) => "请求过于频繁，稍后自动重试".to_string(),
         FetchError::RefreshTemporary(code) => format!("续期暂时失败（HTTP {code}），保留凭据，等待重试"),
-        FetchError::WebCredentials => "请右键 → Claude 数据来源 → 配置 / 更新网页登录".to_string(),
+        FetchError::WebCredentials => "请右键 → Claude 登录设置… 配置或更新网页登录".to_string(),
         FetchError::WebUnauthorized => "网页登录已失效，请更新登录信息".to_string(),
         FetchError::WebForbidden => "网页访问受阻（403），请在浏览器检查验证".to_string(),
-        FetchError::WebOrganization => "请选择组织：右键 → Claude 数据来源 → 配置 → 高级设置".to_string(),
+        FetchError::WebOrganization => "请填写组织 ID：右键 → Claude 登录设置… → 高级设置".to_string(),
         FetchError::PreviousFailure => "上次请求失败，等待更新".to_string(),
         // Codex names its plan; for Claude it is inferred from an answer without windows.
         FetchError::Unsubscribed => match provider {
             Provider::Claude => "未返回任何额度（可能未订阅），已停止刷新".to_string(),
             Provider::Codex => "未订阅付费套餐，已停止刷新".to_string(),
         },
-        FetchError::Network(_) => "网络不通，请检查代理".to_string(),
+        FetchError::Network(_) | FetchError::Offline(_) => "网络不通，请检查代理".to_string(),
         FetchError::Http(code) => format!("服务返回 HTTP {code}"),
         FetchError::Parse => "返回内容无法识别".to_string(),
     }

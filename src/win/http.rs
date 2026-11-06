@@ -44,6 +44,14 @@ fn failed(step: &str) -> String {
     format!("{step} failed ({})", unsafe { GetLastError() })
 }
 
+/// A failed send. A name that does not resolve or a connection that cannot be made
+/// (to the host or the proxy) proves that no server received the request; a timeout or
+/// a dropped connection does not.
+fn send_failed(code: u32) -> String {
+    let not_sent = matches!(code, ERROR_WINHTTP_NAME_NOT_RESOLVED | ERROR_WINHTTP_CANNOT_CONNECT);
+    format!("{}WinHttpSendRequest failed ({code})", if not_sent { crate::providers::NOT_SENT } else { "" })
+}
+
 /// Sends a POST when the request has a body, a GET otherwise.
 pub fn send(request: &Request) -> Result<Response, String> {
     let started = Instant::now();
@@ -97,7 +105,7 @@ pub fn send(request: &Request) -> Result<Response, String> {
         }
         let data = if body.is_empty() { null() } else { body.as_ptr() as *const c_void };
         if WinHttpSendRequest(req.0, null(), 0, data, body_len, body_len, 0) == 0 {
-            return Err(failed("WinHttpSendRequest"));
+            return Err(send_failed(GetLastError()));
         }
         if WinHttpReceiveResponse(req.0, null_mut()) == 0 {
             return Err(failed("WinHttpReceiveResponse"));
@@ -173,5 +181,16 @@ mod tests {
         assert_eq!(retry_after("Thu, 01 Oct 2026 17:30:00 GMT", 1_790_876_000), Some(0));
         assert_eq!(retry_after("invalid", 0), None);
         assert_eq!(retry_after("", 0), None);
+    }
+
+    #[test]
+    fn only_failures_before_any_server_saw_the_request_count_as_offline() {
+        use crate::model::FetchError;
+        use crate::providers::transport;
+        assert!(matches!(transport(send_failed(ERROR_WINHTTP_NAME_NOT_RESOLVED)), FetchError::Offline(_)));
+        assert!(matches!(transport(send_failed(ERROR_WINHTTP_CANNOT_CONNECT)), FetchError::Offline(_)));
+        for ambiguous in [ERROR_WINHTTP_TIMEOUT, ERROR_WINHTTP_CONNECTION_ERROR, ERROR_WINHTTP_SECURE_FAILURE] {
+            assert!(matches!(transport(send_failed(ambiguous)), FetchError::Network(_)));
+        }
     }
 }

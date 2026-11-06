@@ -56,7 +56,7 @@ fn valid_org(s: &str) -> bool {
 }
 
 fn send(request: &Request, http: Http) -> Result<String, FetchError> {
-    let response = http(request).map_err(FetchError::Network)?;
+    let response = http(request).map_err(transport)?;
     match response.status {
         200 => Ok(response.body),
         401 => Err(FetchError::WebUnauthorized),
