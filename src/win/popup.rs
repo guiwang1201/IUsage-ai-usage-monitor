@@ -124,7 +124,7 @@ mod tests {
         });
         assert!(!ok[0].pace.is_empty());
         let mut ok = ok;
-        ok[1].pace = "5 小时额度用得较快，预计 星期三 00:25 用完".into(); // about the longest line
+        ok[1].pace = "额度用得较快，预计 11月12日 00:25 用完".into(); // about the longest line
         assert_eq!(size(1.0, &ok), size(1.0, &panel), "the panel keeps its size whether or not a pace is shown");
         for (name, panel) in [("panel", &panel), ("free", &free), ("ok", &ok)] {
             for light in [false, true] {

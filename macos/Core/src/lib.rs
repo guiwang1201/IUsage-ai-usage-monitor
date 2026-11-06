@@ -435,7 +435,7 @@ mod tests {
         let fast = reading(None, Some((40., now + 5 * DAY)));
         assert_eq!(pace_line(&fast, now), (0, "额度用得较快，预计 星期日 21:06 用完".into(), true));
         let session = reading(Some((90., now + 2 * 3600)), Some((10., now + 5 * DAY)));
-        assert_eq!(pace_line(&session, now), (0, "5 小时额度用得较快，预计 今天 21:26 用完".into(), true));
+        assert_eq!(pace_line(&session, now), (0, "进度正常，星期二 21:06 重置前额度充裕".into(), false));
         // No reset time, or too early in the window: no line.
         let mut unknown = reading(None, Some((50., 0)));
         unknown.present &= !8;
