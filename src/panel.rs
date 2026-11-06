@@ -120,8 +120,11 @@ const PACE_TIGHT: f64 = 90.0;
 /// Early in a window the rate is judged as if this share of it had passed, so a few
 /// minutes of use right after a reset neither hides the line nor raises a false alarm.
 const PACE_MIN_ELAPSED: f64 = 0.1;
+/// The five-hour window gets a longer floor (2.5 hours): a burst in its first half hour
+/// otherwise reads as a full-window rate and outshouts a calm weekly line.
+const PACE_MIN_ELAPSED_SESSION: f64 = 0.5;
 
-fn pace_of(window: Option<Window>, length: i64, now: i64) -> Option<(Pace, i64)> {
+fn pace_of(window: Option<Window>, length: i64, min_elapsed: f64, now: i64) -> Option<(Pace, i64)> {
     let window = window?;
     let reset = window.resets_at.filter(|r| *r > now)?;
     let used = window.used_pct.clamp(0.0, 100.0);
@@ -132,7 +135,7 @@ fn pace_of(window: Option<Window>, length: i64, now: i64) -> Option<(Pace, i64)>
     if elapsed > length {
         return None;
     }
-    let rate = used / (elapsed as f64).max(length as f64 * PACE_MIN_ELAPSED); // percent per second
+    let rate = used / (elapsed as f64).max(length as f64 * min_elapsed); // percent per second
     let projected = used + rate * (reset - now) as f64;
     let pace = if projected > 100.0 {
         Pace::RunsOut(now + ((100.0 - used) / rate) as i64)
@@ -147,8 +150,8 @@ fn pace_of(window: Option<Window>, length: i64, now: i64) -> Option<(Pace, i64)>
 /// One line on whether the quota will last, from the window that looks worse; the
 /// weekly one when they look the same.
 pub(crate) fn pace(usage: &crate::model::Usage, ctx: &Context) -> (String, bool) {
-    let weekly = pace_of(usage.seven_day, 7 * 86_400, ctx.now).map(|p| ("", p));
-    let session = pace_of(usage.five_hour, 5 * 3600, ctx.now).map(|p| ("5 小时", p));
+    let weekly = pace_of(usage.seven_day, 7 * 86_400, PACE_MIN_ELAPSED, ctx.now).map(|p| ("", p));
+    let session = pace_of(usage.five_hour, 5 * 3600, PACE_MIN_ELAPSED_SESSION, ctx.now).map(|p| ("5 小时", p));
     let worse = match (weekly, session) {
         (Some(w), Some(s)) if s.1 .0.rank() > w.1 .0.rank() => Some(s),
         (None, s) => s,
@@ -349,6 +352,13 @@ mod tests {
         // Early in the week at a modest use, so the tighter five-hour window speaks.
         let line = pace_line(usage(Some((55.0, 2 * 3600)), Some((5.0, 7 * DAY - 3600))));
         assert_eq!(line, ("5 小时进度偏快，今天 23:06 重置前可能接近用完".into(), true));
+        // Claude on 6 November 2026: 24% in the first 32 minutes of the five hours, the
+        // week at 74% with 48 minutes left. claude.ai called this normal; so does the line.
+        let line = pace_line(usage(Some((24.0, 4 * 3600 + 28 * 60)), Some((74.0, 48 * 60))));
+        assert_eq!(line, ("进度正常，今天 21:54 重置前额度充裕".into(), false));
+        // A burst that keeps going past half the window still warns: 70% in 2.5 hours.
+        let line = pace_line(usage(Some((70.0, 150 * 60)), Some((10.0, 5 * DAY))));
+        assert!(line.0.starts_with("5 小时额度用得较快"), "{}", line.0);
         // Steady on both: the weekly one speaks.
         assert_eq!(pace_line(usage(Some((10.0, 2 * 3600)), Some((10.0, 5 * DAY)))).0, "进度正常，星期二 21:06 重置前额度充裕");
     }
