@@ -38,17 +38,3 @@ extension SavedReading {
         return usage
     }
 }
-
-enum PacePolicy {
-    // Whether the quota should last until it resets, worded and judged by the shared
-    // Rust `panel` rules, as in the Windows detail panel. Callers show it only for a
-    // fresh reading: after a failed fetch the numbers may be out of date.
-    static func line(reading: SavedReading, now: Int64, utcOffset: Int64 = Int64(TimeZone.current.secondsFromGMT())) -> (text: String, warn: Bool) {
-        var usage = reading.native
-        var buffer = [UInt8](repeating: 0, count: 256)
-        var length = 0
-        var warn = false
-        guard iusage_pace(&usage, now, utcOffset, &buffer, buffer.count, &length, &warn) == 0 else { return ("", false) }
-        return (String(decoding: buffer[..<length], as: UTF8.self), warn)
-    }
-}

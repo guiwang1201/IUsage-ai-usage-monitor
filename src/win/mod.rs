@@ -832,7 +832,10 @@ impl App {
         let mut sections = panel::build(&self.cache, &self.error, &context);
         for section in &mut sections {
             let gate = self.schedule[section.provider.index()];
-            if schedule::told_to_wait(gate.blocked_until, context.now) {
+            // A request in flight holds only its own gap, not a wait worth a row: showing it
+            // would grow the panel by a line until the reply arrives, then shrink it again.
+            let in_flight = self.fetching.as_ref().is_some_and(|(p, _)| *p == section.provider);
+            if !in_flight && schedule::told_to_wait(gate.blocked_until, context.now) {
                 section.retry = format!("等待至 {} · {}", crate::timefmt::clock(gate.blocked_until, context.now, context.utc_offset),
                     crate::timefmt::countdown_long(gate.blocked_until - context.now));
                 if gate.backoff > 0 && self.error[section.provider.index()].is_none() {

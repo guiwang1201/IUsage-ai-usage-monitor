@@ -3,7 +3,7 @@
 
 use crate::cache::{Cache, Entry};
 use crate::model::{FetchError, Provider, Thresholds, Window};
-use crate::timefmt::{age, clock, countdown_long, weekday_clock};
+use crate::timefmt::{age, clock, countdown_long};
 use crate::view::{describe, reset_since, used_now, Severity};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -27,10 +27,6 @@ pub struct Section {
     /// How fresh the numbers are, or what went wrong.
     pub status: String,
     pub provenance: String,
-    /// Whether the quota should last until it resets, judged from how fast it is used.
-    pub pace: String,
-    /// The pace is a warning rather than reassurance.
-    pub pace_warn: bool,
     pub retry: String,
     pub update_login: bool,
     pub failed: bool,
@@ -71,81 +67,16 @@ fn section(provider: Provider, entry: Option<&Entry>, error: Option<&FetchError>
             format!("{}（{}的数据）", describe(provider, error), age(ctx.now - entry.fetched_at))
         }
     };
-    // Only judged from a fresh reading: after a failure the numbers may be out of date.
-    let (pace, pace_warn) = match error {
-        None => pace(&usage, ctx),
-        Some(_) => (String::new(), false),
-    };
     Section {
         provider,
         current: provider == ctx.current,
         rows: [row("5 小时", usage.five_hour, error.is_some(), ctx), row("7 天", usage.seven_day, error.is_some(), ctx)],
         status,
         provenance: entry.map_or_else(|| "尚无成功记录".into(), |e| format!("{} · 上次成功 {}", e.source.label(), clock(e.fetched_at, ctx.now, ctx.utc_offset))),
-        pace,
-        pace_warn,
         retry: String::new(),
         update_login: provider == Provider::Claude && matches!(error, Some(FetchError::WebUnauthorized | FetchError::WebCredentials | FetchError::WebOrganization)),
         failed: error.is_some() && !unsubscribed,
         unsubscribed,
-    }
-}
-
-/// How the weekly window is being used.
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum Pace {
-    /// On course to use at most `PACE_TIGHT` percent before it resets.
-    Steady,
-    /// On course to use most of it.
-    Tight,
-    /// On course to run out at the given moment, before it resets.
-    RunsOut(i64),
-    Exhausted,
-}
-
-/// Projected use above this share counts as tight.
-const PACE_TIGHT: f64 = 90.0;
-/// Early in the week the rate is judged as if this share of it had passed, so a little
-/// use right after a reset neither hides the line nor raises a false alarm.
-const PACE_MIN_ELAPSED: f64 = 0.1;
-const WEEK: i64 = 7 * 86_400;
-
-fn weekly_pace(window: Option<Window>, now: i64) -> Option<(Pace, i64)> {
-    let window = window?;
-    let reset = window.resets_at.filter(|r| *r > now)?;
-    let used = window.used_pct.clamp(0.0, 100.0);
-    if used >= 100.0 {
-        return Some((Pace::Exhausted, reset));
-    }
-    let elapsed = WEEK - (reset - now);
-    if elapsed > WEEK {
-        return None;
-    }
-    let rate = used / (elapsed as f64).max(WEEK as f64 * PACE_MIN_ELAPSED); // percent per second
-    let projected = used + rate * (reset - now) as f64;
-    let pace = if projected > 100.0 {
-        Pace::RunsOut(now + ((100.0 - used) / rate) as i64)
-    } else if projected > PACE_TIGHT {
-        Pace::Tight
-    } else {
-        Pace::Steady
-    };
-    Some((pace, reset))
-}
-
-/// One line on whether the weekly quota will last. The five-hour window is left out:
-/// its remaining share is on the taskbar, and a projection over so short a window is
-/// mostly noise from bursts of use.
-pub(crate) fn pace(usage: &crate::model::Usage, ctx: &Context) -> (String, bool) {
-    let Some((pace, reset)) = weekly_pace(usage.seven_day, ctx.now) else {
-        return (String::new(), false);
-    };
-    let when = |t| weekday_clock(t, ctx.now, ctx.utc_offset);
-    match pace {
-        Pace::Steady => (format!("进度正常，{} 重置前额度充裕", when(reset)), false),
-        Pace::Tight => (format!("进度偏快，{} 重置前可能接近用完", when(reset)), true),
-        Pace::RunsOut(at) => (format!("额度用得较快，预计 {} 用完", when(at)), true),
-        Pace::Exhausted => (format!("额度已用完，{} 重置", when(reset)), true),
     }
 }
 
@@ -280,67 +211,6 @@ mod tests {
         assert_eq!(panel[0].rows[0].value, "已用 0%");
         assert_eq!(panel[0].rows[0].detail, "已重置");
         assert_eq!(panel[0].rows[1].detail, "重置时间未知");
-    }
-
-    fn usage(five: Option<(f64, i64)>, seven: Option<(f64, i64)>) -> Usage {
-        let w = |(used_pct, left): (f64, i64)| Window { used_pct, resets_at: Some(NOW + left) };
-        Usage { five_hour: five.map(w), seven_day: seven.map(w) }
-    }
-
-    fn pace_line(u: Usage) -> (String, bool) {
-        pace(&u, &ctx())
-    }
-
-    #[test]
-    fn pace_follows_the_weekly_window() {
-        const DAY: i64 = 86_400;
-        // Two of seven days gone (Thursday 21:06), reset on Tuesday 21:06.
-        assert_eq!(pace_line(usage(None, Some((20.0, 5 * DAY)))), ("进度正常，星期二 21:06 重置前额度充裕".into(), false));
-        assert_eq!(pace_line(usage(None, Some((27.0, 5 * DAY)))), ("进度偏快，星期二 21:06 重置前可能接近用完".into(), true));
-        // 24% after two days and an hour heads for about 82%, which claude.ai also calls normal.
-        assert_eq!(pace_line(usage(None, Some((24.0, 4 * DAY + 23 * 3600)))).1, false);
-        // 40% in two days leaves three more days at that rate: Sunday.
-        assert_eq!(pace_line(usage(None, Some((40.0, 5 * DAY)))), ("额度用得较快，预计 星期日 21:06 用完".into(), true));
-        assert_eq!(pace_line(usage(None, Some((100.0, 5 * DAY)))), ("额度已用完，星期二 21:06 重置".into(), true));
-    }
-
-    #[test]
-    fn pace_is_shown_early_in_a_window_and_skips_unknown_resets() {
-        const DAY: i64 = 86_400;
-        // Right after both windows reset (Codex at 00:38 on 6 November 2026: 5 hours at 0%,
-        // 16 hours into the week at 8%) the line still shows.
-        let line = pace_line(usage(Some((0.0, 5 * 3600 - 60)), Some((8.0, 6 * DAY + 8 * 3600))));
-        assert_eq!(line, ("进度正常，10月8日 05:06 重置前额度充裕".into(), false));
-        // Early on the rate is judged over a tenth of the window: 30% in twelve hours of a
-        // week counts as 30% in about 17 hours, still on course to run out.
-        let line = pace_line(usage(None, Some((30.0, 7 * DAY - 12 * 3600))));
-        assert_eq!(line.1, true);
-        assert!(line.0.starts_with("额度用得较快"), "{}", line.0);
-        assert_eq!(pace_line(usage(None, None)).0, "");
-        assert_eq!(pace_line(Usage { five_hour: None, seven_day: Some(Window { used_pct: 50.0, resets_at: None }) }).0, "");
-        assert_eq!(pace_line(usage(None, Some((50.0, -10)))).0, "");
-    }
-
-    #[test]
-    fn the_five_hour_window_never_sets_the_line() {
-        const DAY: i64 = 86_400;
-        // Five hours nearly gone at 90% while the week is calm: the weekly line stands.
-        let line = pace_line(usage(Some((90.0, 2 * 3600)), Some((10.0, 5 * DAY))));
-        assert_eq!(line, ("进度正常，星期二 21:06 重置前额度充裕".into(), false));
-        // Claude on 6 November 2026: 24% in the first 32 minutes of the five hours, the
-        // week at 74% with 48 minutes left. claude.ai called this normal; so does the line.
-        let line = pace_line(usage(Some((24.0, 4 * 3600 + 28 * 60)), Some((74.0, 48 * 60))));
-        assert_eq!(line, ("进度正常，今天 21:54 重置前额度充裕".into(), false));
-        // An exhausted five-hour window alone gives no line.
-        assert_eq!(pace_line(usage(Some((100.0, 3600)), None)).0, "");
-    }
-
-    #[test]
-    fn no_pace_while_the_fetch_is_failing() {
-        let panel = build(&[Some(claude()), None], &[Some(FetchError::Network("x".into())), None], &ctx());
-        assert_eq!(panel[0].pace, "");
-        let panel = build(&[Some(claude()), None], &[None, None], &ctx());
-        assert!(panel[0].pace_warn, "91% of the week used with almost three days left");
     }
 
     #[test]

@@ -9,7 +9,6 @@
 #[path = "../../../src/cache.rs"] mod cache;
 #[path = "../../../src/settings.rs"] mod settings;
 #[path = "../../../src/view.rs"] mod view;
-#[path = "../../../src/panel.rs"] mod panel;
 
 #[repr(C)]
 #[derive(Default, Debug)]
@@ -142,32 +141,6 @@ pub unsafe extern "C" fn iusage_alert_check(
     if !copy_out(&lines, out, capacity, out_len) { return 1; }
     *announced = marks[0];
     *announced.add(1) = marks[1];
-    0
-}
-
-/// The detail panel's pace line for one fresh reading (whether the quota should last
-/// until it resets), from the shared `panel` rules, so the wording matches Windows.
-/// The caller passes nothing after a failed fetch, as Windows hides the line then.
-///
-/// Writes the line (possibly empty) to `out` and whether it is a warning to `warn`.
-/// Returns 0 on success, 1 on invalid arguments or a buffer that is too small.
-/// # Safety
-/// Non-null pointers must reference readable/writable memory of the stated sizes.
-#[no_mangle]
-pub unsafe extern "C" fn iusage_pace(
-    usage: *const MacUsage, now: i64, utc_offset: i64,
-    out: *mut u8, capacity: usize, out_len: *mut usize, warn: *mut bool,
-) -> i32 {
-    if usage.is_null() || out_len.is_null() || warn.is_null() { return 1; }
-    *out_len = 0;
-    *warn = false;
-    let current = usage_of(&*usage);
-    let ctx = panel::Context {
-        current: model::Provider::Claude, show_remaining: false, thresholds: model::Thresholds::default(), now, utc_offset,
-    };
-    let (line, warning) = panel::pace(&current, &ctx);
-    if !copy_out(&line, out, capacity, out_len) { return 1; }
-    *warn = warning;
     0
 }
 
@@ -419,33 +392,4 @@ mod tests {
         assert_eq!(plan(&stored("ffi-refused-after-login", (NOW - 60) * 1000)).0, 0);
     }
 
-    fn pace_line(u: &MacUsage, now: i64) -> (i32, String, bool) {
-        let mut out = vec![0u8; 256];
-        let (mut len, mut warn) = (0usize, true);
-        let code = unsafe { iusage_pace(u, now, 8 * 3600, out.as_mut_ptr(), out.len(), &mut len, &mut warn) };
-        (code, String::from_utf8(out[..len].to_vec()).unwrap(), warn)
-    }
-
-    #[test]
-    fn ffi_pace_matches_the_windows_panel_line() {
-        const DAY: i64 = 86_400;
-        let now = 1_790_860_000; // Thursday 1 October 2026, 21:06 in UTC+8
-        let steady = reading(None, Some((20., now + 5 * DAY)));
-        assert_eq!(pace_line(&steady, now), (0, "进度正常，星期二 21:06 重置前额度充裕".into(), false));
-        let fast = reading(None, Some((40., now + 5 * DAY)));
-        assert_eq!(pace_line(&fast, now), (0, "额度用得较快，预计 星期日 21:06 用完".into(), true));
-        let session = reading(Some((90., now + 2 * 3600)), Some((10., now + 5 * DAY)));
-        assert_eq!(pace_line(&session, now), (0, "进度正常，星期二 21:06 重置前额度充裕".into(), false));
-        // No reset time, or too early in the window: no line.
-        let mut unknown = reading(None, Some((50., 0)));
-        unknown.present &= !8;
-        assert_eq!(pace_line(&unknown, now), (0, String::new(), false));
-        assert_eq!(pace_line(&MacUsage::default(), now), (0, String::new(), false));
-        // A buffer too small leaves nothing half-written.
-        let (mut len, mut warn) = (7usize, true);
-        let mut tiny = [0u8; 4];
-        assert_eq!(unsafe { iusage_pace(&fast, now, 8 * 3600, tiny.as_mut_ptr(), tiny.len(), &mut len, &mut warn) }, 1);
-        assert_eq!((len, warn), (0, false));
-        assert_eq!(unsafe { iusage_pace(std::ptr::null(), now, 0, tiny.as_mut_ptr(), 4, &mut len, &mut warn) }, 1);
-    }
 }

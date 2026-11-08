@@ -21,12 +21,10 @@ const DETAIL_H: f32 = 16.0;
 const ROW_GAP: f32 = 10.0;
 const STATUS_GAP: f32 = 8.0;
 const STATUS_H: f32 = 16.0;
-const PACE_GAP: f32 = 14.0;
-const PACE_H: f32 = 22.0;
 const SECTION_GAP: f32 = 12.0;
 
 const ROW_H: f32 = LINE_H + BAR_GAP + BAR_H + DETAIL_GAP + DETAIL_H;
-const SECTION_H: f32 = HEADER_H + HEADER_GAP + ROW_H * 2.0 + ROW_GAP + STATUS_GAP + STATUS_H * 4.0 + PACE_GAP + PACE_H;
+const SECTION_H: f32 = HEADER_H + HEADER_GAP + ROW_H * 2.0 + ROW_GAP + STATUS_GAP + STATUS_H * 2.0;
 /// A provider with nothing to show: its header, a notice and an action line.
 const NOTICE_H: f32 = HEADER_H + HEADER_GAP + STATUS_H * 2.0;
 /// The gaps and the rule between two sections.
@@ -36,7 +34,9 @@ const WARNING_TEXT: Color = Color::rgb(245, 158, 11);
 const LINK_TEXT: Color = Color::rgb(45, 130, 225);
 
 fn section_h(section: &Section) -> f32 {
-    if section.unsubscribed { NOTICE_H } else { SECTION_H }
+    if section.unsubscribed { NOTICE_H } else {
+        SECTION_H + STATUS_H * ((!section.retry.is_empty()) as u8 + link(section).is_some() as u8) as f32
+    }
 }
 
 /// The clickable last line of a section, if it has one.
@@ -102,7 +102,7 @@ mod tests {
         panel[0].retry = "已暂停请求，更新登录后恢复".into();
         let x = |scale: f32| (PAD * scale + 4.0) as i32;
         for scale in [1.0, 1.75] {
-            let y = ((TOP + SECTION_H - STATUS_H / 2.0) * scale) as i32;
+            let y = ((TOP + section_h(&panel[0]) - STATUS_H / 2.0) * scale) as i32;
             assert_eq!(link_hit(&panel, x(scale), y, scale), Some(Provider::Claude));
             assert_eq!(link_hit(&panel, 0, y, scale), None);
             assert_eq!(link_hit(&panel, x(scale), 0, scale), None);
@@ -113,19 +113,17 @@ mod tests {
             current: Provider::Claude, show_remaining: false, thresholds: Thresholds::default(), now, utc_offset: 8 * 3600,
         })[1].clone();
         assert!(size(1.0, &free).1 < size(1.0, &panel).1);
-        let codex_link = TOP + SECTION_H + DIVIDER_H + NOTICE_H - STATUS_H / 2.0;
+        let codex_link = TOP + section_h(&free[0]) + DIVIDER_H + NOTICE_H - STATUS_H / 2.0;
         assert_eq!(link_hit(&free, x(1.0), codex_link as i32, 1.0), Some(Provider::Codex));
         assert_eq!(link_hit(&free, x(1.0), (codex_link - STATUS_H) as i32, 1.0), None);
         free[1].retry = "正在重新检查…".into();
         assert_eq!(link_hit(&free, x(1.0), codex_link as i32, 1.0), None, "no second click while one is pending");
-        // Fresh readings add the pace line under the provenance.
+        // Healthy readings reserve no empty retry or login rows.
         let ok = panel::build(&cache, &[None, None], &Context {
             current: Provider::Claude, show_remaining: true, thresholds: Thresholds::default(), now, utc_offset: 8 * 3600,
         });
-        assert!(!ok[0].pace.is_empty());
-        let mut ok = ok;
-        ok[1].pace = "额度用得较快，预计 11月12日 00:25 用完".into(); // about the longest line
-        assert_eq!(size(1.0, &ok), size(1.0, &panel), "the panel keeps its size whether or not a pace is shown");
+        assert_eq!(size(1.0, &ok), (340, 401));
+        assert!(size(1.0, &ok).1 < size(1.0, &panel).1);
         for (name, panel) in [("panel", &panel), ("free", &free), ("ok", &ok)] {
             for light in [false, true] {
                 for scale in [1.0, 1.75] {
@@ -164,7 +162,6 @@ enum Face {
     Body,
     BodyBold,
     Small,
-    Pace,
 }
 
 struct Text<'a> {
@@ -239,17 +236,14 @@ pub fn paint(surface: &mut Surface, scratch: &mut Surface, panel: &Panel, light:
             y += STATUS_H;
             texts.push(Text { face: Face::Small, text: &section.provenance, y, h: STATUS_H, align: Align::Left, color: secondary });
             y += STATUS_H;
-            // The pace stands apart from the status lines, larger than the body text.
-            y += PACE_GAP;
-            let color = if section.pace_warn { WARNING_TEXT } else { primary };
-            texts.push(Text { face: Face::Pace, text: &section.pace, y, h: PACE_H, align: Align::Left, color });
-            y += PACE_H;
-            texts.push(Text { face: Face::Small, text: &section.retry, y, h: STATUS_H, align: Align::Left, color: secondary });
-            y += STATUS_H;
+            if !section.retry.is_empty() {
+                texts.push(Text { face: Face::Small, text: &section.retry, y, h: STATUS_H, align: Align::Left, color: secondary });
+                y += STATUS_H;
+            }
             if let Some(link) = link(section) {
                 texts.push(Text { face: Face::Small, text: link, y, h: STATUS_H, align: Align::Left, color: LINK_TEXT });
+                y += STATUS_H;
             }
-            y += STATUS_H;
         }
     }
 
@@ -258,14 +252,12 @@ pub fn paint(surface: &mut Surface, scratch: &mut Surface, panel: &Panel, light:
     let body = Font::new(px(12.0), false);
     let body_bold = Font::new(px(12.0), true);
     let small = Font::new(px(11.0), false);
-    let pace = Font::new(px(13.0), false);
     for t in texts {
         let font = match t.face {
             Face::Title => &title,
             Face::Body => &body,
             Face::BodyBold => &body_bold,
             Face::Small => &small,
-            Face::Pace => &pace,
         };
         // The title sits to the right of the provider dot.
         let left = if matches!(t.face, Face::Title) { PAD + 14.0 } else { PAD };

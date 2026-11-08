@@ -89,14 +89,6 @@ precondition(alerts(97, 8203, now: 1090).isEmpty)
 precondition(alerts(82, 30_000, now: 8300) == ["5 小时额度剩余 18%，6h 后重置"])
 print("PASS: alerts deduplicate and rearm on a new window")
 
-// The detail panel's pace line comes from the shared Windows rules.
-let paceNow: Int64 = 1_790_860_000 // Thursday 1 October 2026, 21:06 in UTC+8
-let weekly = SavedReading(five: nil, seven: 40, fetchedAt: paceNow, fiveReset: nil, sevenReset: paceNow + 5 * 86_400)
-precondition(PacePolicy.line(reading: weekly, now: paceNow, utcOffset: 8 * 3600) == ("额度用得较快，预计 星期日 21:06 用完", true))
-let calm = SavedReading(five: 10, seven: 20, fetchedAt: paceNow, fiveReset: paceNow + 7200, sevenReset: paceNow + 5 * 86_400)
-precondition(PacePolicy.line(reading: calm, now: paceNow, utcOffset: 8 * 3600) == ("进度正常，星期二 21:06 重置前额度充裕", false))
-precondition(PacePolicy.line(reading: SavedReading(five: 50, seven: 50, fetchedAt: paceNow, fiveReset: nil, sevenReset: nil), now: paceNow).text.isEmpty)
-print("PASS: pace line matches the Windows detail panel")
 
 let issues = OfflineRuntime(state: OfflineState(), save: { _ in })
 precondition(issues.issue(0) == nil && issues.issue(2) == nil)

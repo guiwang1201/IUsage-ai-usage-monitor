@@ -16,7 +16,6 @@ final class Prototype: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private var sectionResets: [[NSTextField]] = []
     private var sectionStatuses: [NSTextField] = []
-    private var sectionPaces: [PaceCard] = []
     private var sectionPercentages: [[NSTextField]] = []
     private var sectionProgress: [[NSProgressIndicator]] = []
     private var activityTimer: Timer?
@@ -178,15 +177,6 @@ final class Prototype: NSObject, NSApplicationDelegate {
             resetLabels.append(reset)
             stack.addArrangedSubview(reset)
         }
-        // Whether the quota should last until it resets, below the rows as on Windows.
-        // It sits in its own tinted card, so it does not read as one more status line.
-        let pace = PaceCard()
-        pace.isHidden = true
-        sectionPaces.append(pace)
-        stack.setCustomSpacing(10, after: stack.arrangedSubviews.last!)
-        stack.addArrangedSubview(pace)
-        // A fixed width (the panel's content width), so both cards line up whatever their text.
-        pace.widthAnchor.constraint(equalToConstant: 330).isActive = true
         sectionResets.append(resetLabels)
         sectionPercentages.append(percentages)
         sectionProgress.append(indicators)
@@ -203,8 +193,6 @@ final class Prototype: NSObject, NSApplicationDelegate {
             sectionStatuses[provider].stringValue = issue.map { reading == nil ? "\($0) · 暂无数据" : "\($0) · 显示缓存 · \(updated)" } ?? "\(source) · \(updated)"
             let values = reading?.values(now: now) ?? [nil, nil]
             // Only judged from a fresh reading, as on Windows; the mock readings have no reset times.
-            let pace = issue == nil ? reading.map { PacePolicy.line(reading: $0, now: now) } : nil
-            sectionPaces[provider].show(pace?.text ?? "", warn: pace?.warn == true)
             for index in 0...1 {
                 if cachedOnly {
                     let reset = index == 0 ? reading?.fiveReset : reading?.sevenReset
@@ -466,54 +454,3 @@ let app = NSApplication.shared
 let delegate = Prototype()
 app.delegate = delegate
 app.run()
-
-/// The pace line as a small card of its own: an icon and a tint mark it apart from the
-/// status lines above it; orange when the quota may not last, green when it is steady.
-final class PaceCard: NSView {
-    private let icon = NSImageView()
-    private let text = NSTextField(wrappingLabelWithString: "")
-    private var warn = false
-    init() {
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer?.cornerRadius = 7
-        text.font = NSFont.systemFont(ofSize: 12, weight: .medium)
-        text.textColor = .labelColor
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        let row = NSStackView(views: [icon, text])
-        row.orientation = .horizontal
-        row.alignment = .centerY
-        row.spacing = 7
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
-            row.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
-            row.topAnchor.constraint(equalTo: topAnchor, constant: 7),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -7)
-        ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
-    }
-    required init?(coder: NSCoder) { nil }
-    func show(_ line: String, warn: Bool) {
-        self.warn = warn
-        text.stringValue = line
-        setAccessibilityLabel(line)
-        icon.image = NSImage(systemSymbolName: warn ? "exclamationmark.triangle.fill" : "checkmark.circle.fill", accessibilityDescription: nil)
-        icon.contentTintColor = warn ? .systemOrange : .systemGreen
-        isHidden = line.isEmpty
-        needsDisplay = true
-    }
-    override var wantsUpdateLayer: Bool { true }
-    override func updateLayer() {
-        // Resolved here so the tint follows light and dark mode.
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            let tint: NSColor = warn ? .systemOrange : .systemGreen
-            layer?.backgroundColor = tint.withAlphaComponent(0.14).cgColor
-            layer?.borderColor = tint.withAlphaComponent(0.35).cgColor
-            layer?.borderWidth = 1
-        }
-    }
-}

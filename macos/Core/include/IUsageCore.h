@@ -14,8 +14,6 @@ bool iusage_complete(MacGate *gate, int64_t now, uint16_t status, uint32_t retry
 int64_t iusage_min_gap_secs(void);
 int32_t iusage_alert_check(const MacUsage *usage, uint8_t *announced, const int64_t *previous_reset, int64_t now,
                            uint8_t *out, size_t capacity, size_t *out_len);
-int32_t iusage_pace(const MacUsage *usage, int64_t now, int64_t utc_offset,
-                    uint8_t *out, size_t capacity, size_t *out_len, bool *warn);
 int32_t iusage_claude_refresh_plan(const uint8_t *credentials, size_t len, int64_t now, uint8_t *body, size_t capacity, size_t *body_len);
 int32_t iusage_claude_refresh_finish(const uint8_t *original, size_t original_len, uint16_t status, uint32_t retry_after,
                                      const uint8_t *response, size_t response_len, const uint8_t *current, size_t current_len,
