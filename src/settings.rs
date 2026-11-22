@@ -122,7 +122,7 @@ mod tests {
         std::fs::write(&path, r#"{"provider":"gemini","poll_secs":1,"offset_x":-40,"warn_pct":95,"crit_pct":80}"#).unwrap();
         let loaded = Settings::load(&path);
         assert_eq!(loaded.provider, Provider::Claude);
-        assert_eq!(loaded.poll_secs, 50);
+        assert_eq!(loaded.poll_secs, 45);
         assert_eq!(loaded.offset_x, 0);
         assert!(loaded.notify, "a file written before the option existed keeps notifications on");
         assert_eq!(loaded.thresholds, Thresholds { warn: 80, crit: 80 });

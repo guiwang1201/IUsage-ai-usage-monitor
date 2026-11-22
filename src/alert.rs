@@ -88,7 +88,7 @@ mod tests {
     fn three_reminders_per_window_and_no_more() {
         let mut announced = [0, 0];
         let alert = check(&mut announced, &usage(80.0, 10.0), NOW).unwrap();
-        assert_eq!(alert, Alert { critical: false, lines: vec!["5 小时额度剩余 20%，2h 后重置".to_string()] });
+        assert_eq!(alert, Alert { critical: false, lines: vec!["5 小时额度剩余 20%，2.0h 后重置".to_string()] });
         for used in [81.0, 85.0, 89.0] {
             assert_eq!(check(&mut announced, &usage(used, 10.0), NOW), None);
         }
@@ -106,7 +106,7 @@ mod tests {
     fn jumping_past_several_points_is_one_alert() {
         let mut announced = [0, 0];
         let alert = check(&mut announced, &usage(10.0, 96.0), NOW).unwrap();
-        assert_eq!(alert, Alert { critical: true, lines: vec!["7 天额度剩余 4%，3d 后重置".to_string()] });
+        assert_eq!(alert, Alert { critical: true, lines: vec!["7 天额度剩余 4%，3.0d 后重置".to_string()] });
         assert_eq!(announced, [0, 3]);
     }
 

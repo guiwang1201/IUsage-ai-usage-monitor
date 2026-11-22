@@ -207,19 +207,19 @@ mod tests {
     #[test]
     fn shows_used_by_default() {
         let view = build(Provider::Claude, Some(&usage()), None, false, T, NOW);
-        assert_eq!(view.rows[0].text, "4% 4h");
+        assert_eq!(view.rows[0].text, "4% 4.0h");
         assert_eq!(view.rows[0].fill, Some(0.04));
         assert_eq!(view.rows[0].severity, Severity::Ok);
-        assert_eq!(view.rows[1].text, "92% 1d");
+        assert_eq!(view.rows[1].text, "92% 1.0d");
         assert_eq!(view.rows[1].severity, Severity::Crit);
         assert!(!view.stale);
-        assert_eq!(view.tip, "IUsage · Claude\n5h 已用 4% · 4h 后重置\n7d 已用 92% · 1d 后重置");
+        assert_eq!(view.tip, "IUsage · Claude\n5h 已用 4% · 4.0h 后重置\n7d 已用 92% · 1.0d 后重置");
     }
 
     #[test]
     fn remaining_mode_inverts_the_number_but_not_the_severity() {
         let view = build(Provider::Claude, Some(&usage()), None, true, T, NOW);
-        assert_eq!(view.rows[1].text, "8% 1d");
+        assert_eq!(view.rows[1].text, "8% 1.0d");
         assert_eq!(view.rows[1].fill, Some(0.08));
         assert_eq!(view.rows[1].severity, Severity::Crit);
     }
@@ -229,7 +229,7 @@ mod tests {
         let view = build(Provider::Codex, Some(&usage()), None, false, T, NOW + 5 * 3600);
         assert_eq!(view.rows[0].text, "0% --");
         assert_eq!(view.rows[0].fill, Some(0.0));
-        assert_eq!(view.rows[1].text, "92% 19h");
+        assert_eq!(view.rows[1].text, "92% 19.0h");
     }
 
     #[test]
@@ -256,8 +256,8 @@ mod tests {
         // A window that has not reset keeps its number, and the reset one is unknown.
         let view = build(Provider::Claude, Some(&usage()), Some(&FetchError::Http(503)), false, T, NOW + 5 * 3600);
         assert_eq!(view.rows[0].text, "HTTP 503");
-        assert_eq!(view.rows[1].text, "92% 19h");
-        assert_eq!(view.tip, "IUsage · Claude\n7d 已用 92% · 19h 后重置\n服务返回 HTTP 503");
+        assert_eq!(view.rows[1].text, "92% 19.0h");
+        assert_eq!(view.tip, "IUsage · Claude\n7d 已用 92% · 19.0h 后重置\n服务返回 HTTP 503");
         // Without an error the empty window is simply empty.
         let view = build(Provider::Claude, Some(&usage()), None, false, T, later);
         assert_eq!(view.rows[0].text, "0% --");
@@ -299,7 +299,7 @@ mod tests {
         let error = FetchError::Network("timeout".into());
         let view = build(Provider::Claude, Some(&usage()), Some(&error), false, T, NOW);
         assert!(view.stale);
-        assert_eq!(view.rows[0].text, "4% 4h");
+        assert_eq!(view.rows[0].text, "4% 4.0h");
     }
 
     #[test]

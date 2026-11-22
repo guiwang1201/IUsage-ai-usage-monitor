@@ -55,14 +55,14 @@ fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// Short countdown as shown next to the bar: `2d`, `4h`, `35m`, or `--` once it has passed.
+/// Short countdown as shown next to the bar: `2.0d`, `4.0h`, `35m`, or `--` once it has passed.
 pub fn countdown(secs: i64) -> String {
     if secs <= 0 {
         "--".to_string()
     } else if secs >= 86_400 {
-        format!("{}d", secs / 86_400)
+        format!("{:.1}d", secs as f64 / 86_400.0)
     } else if secs >= 3600 {
-        format!("{}h", secs / 3600)
+        format!("{:.1}h", secs as f64 / 3600.0)
     } else {
         format!("{}m", (secs / 60).max(1))
     }
@@ -185,9 +185,16 @@ mod tests {
     #[test]
     fn formats_countdown() {
         assert_eq!(countdown(-5), "--");
+        assert_eq!(countdown(0), "--");
+        assert_eq!(countdown(3599), "59m");
+        assert_eq!(countdown(3600), "1.0h");
+        assert_eq!(countdown(5400), "1.5h");
+        assert_eq!(countdown(86_399), "24.0h");
+        assert_eq!(countdown(86_400), "1.0d");
+        assert_eq!(countdown(293_760), "3.4d");
         assert_eq!(countdown(20), "1m");
         assert_eq!(countdown(35 * 60), "35m");
-        assert_eq!(countdown(4 * 3600 + 59 * 60), "4h");
-        assert_eq!(countdown(2 * 86_400 + 5), "2d");
+        assert_eq!(countdown(4 * 3600 + 59 * 60), "5.0h");
+        assert_eq!(countdown(2 * 86_400 + 5), "2.0d");
     }
 }

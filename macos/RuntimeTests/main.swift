@@ -67,8 +67,8 @@ print("PASS: reset timestamps persist and elapsed windows display zero without r
 
 try runtime.setRemaining(true)
 precondition(try! store.load().showRemaining == true)
-precondition(DisplayFormat.countdown(2 * 86400 + 5) == "2d")
-precondition(DisplayFormat.countdown(4 * 3600 + 59 * 60) == "4h")
+precondition(DisplayFormat.countdown(2 * 86400 + 5) == "2.0d")
+precondition(DisplayFormat.countdown(4 * 3600 + 59 * 60) == "5.0h")
 precondition(DisplayFormat.longCountdown(6 * 86400 + 13 * 3600) == "6 天 13 小时")
 print("PASS: display mode persists and countdown matches Windows units")
 
